@@ -1,0 +1,7 @@
+{
+  "name": "Literal Sticker: Purest Bridge",
+  "description": "Convert your expression into a pure black background asset instantly.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
