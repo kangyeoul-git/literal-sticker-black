@@ -1,131 +1,97 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Literal Sticker</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
-        body { background-color: #000000; color: white; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; }
-        .logo-text { font-size: clamp(3rem, 12vw, 10rem); font-weight: 900; letter-spacing: -0.05em; line-height: 0.8; cursor: pointer; transition: all 0.4s ease; text-align: center; }
-        .logo-text:hover { transform: scale(1.05); }
-        .fade-out { opacity: 0; transition: opacity 0.6s ease; pointer-events: none; }
-        .hidden { display: none; }
-        /* 카메라 프레임 스타일 */
-        .camera-container { position: relative; width: 320px; height: 320px; border-radius: 2rem; overflow: hidden; background: #111; border: 1px solid #222; }
-        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-    </script>
+        body { background-color: #000000; color: #ffffff; font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; }
+        .mirror { transform: scaleX(-1); }
+    </style>
 </head>
 <body>
+    <div id="root"></div>
 
-    <div id="intro" class="fixed inset-0 flex items-center justify-center bg-black z-50">
-        <h1 id="start-btn" class="logo-text">LITERAL<br>STICKER</h1>
-    </div>
+    <script type="text/babel">
+        const { useState, useRef, useEffect, useCallback } = React;
 
-    <div id="app" class="hidden h-screen flex flex-col items-center justify-center p-6">
-        <div class="camera-container shadow-2xl">
-            <video id="video" autoplay playsinline></video>
-            <canvas id="output-canvas" class="hidden"></canvas>
-            <div id="countdown" class="absolute inset-0 flex items-center justify-center text-8xl font-black hidden z-10"></div>
-        </div>
-
-        <div class="mt-12 flex flex-col items-center gap-6">
-            <button id="capture-btn" class="px-12 py-4 bg-white text-black font-black rounded-full text-xl hover:bg-zinc-200 transition-all active:scale-95">
-                Capture
-            </button>
-            <div id="result-btns" class="hidden flex gap-4">
-                <button id="download-btn" class="px-8 py-3 bg-zinc-100 text-black font-bold rounded-full hover:bg-white transition-all">Download PNG</button>
-                <button id="retake-btn" class="px-8 py-3 bg-zinc-800 text-white font-bold rounded-full hover:bg-zinc-700 transition-all">Retake</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const intro = document.getElementById('intro');
-        const app = document.getElementById('app');
-        const startBtn = document.getElementById('start-btn');
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('output-canvas');
-        const ctx = canvas.getContext('2d');
-        const countdownEl = document.getElementById('countdown');
-        const captureBtn = document.getElementById('capture-btn');
-        const resultBtns = document.getElementById('result-btns');
-
-        // AI 세그멘테이션 설정
-        const selfieSegmentation = new SelfieSegmentation({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-        });
-
-        selfieSegmentation.setOptions({ modelSelection: 1 });
-        selfieSegmentation.onResults(onResults);
-
-        function onResults(results) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.save();
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height);
-
-            // 마스크를 사용하여 배경을 검정색(#000000)으로 채우기
-            ctx.globalCompositeOperation = 'source-in';
-            ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        const App = () => {
+            const [view, setView] = useState('intro'); // 'intro' or 'camera'
             
-            ctx.globalCompositeOperation = 'destination-over';
-            ctx.fillStyle = '#000000'; // 여울 님이 요청하신 순수 블랙
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.restore();
-        }
+            if (view === 'intro') {
+                return (
+                    <div className="h-screen flex items-center justify-center bg-black cursor-pointer" onClick={() => setView('camera')}>
+                        <h1 className="text-7xl font-black tracking-tighter hover:scale-105 transition-transform text-center">
+                            LITERAL<br/>STICKER
+                        </h1>
+                    </div>
+                );
+            }
 
-        // 인트로 시작
-        startBtn.addEventListener('click', async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                intro.classList.add('fade-out');
-                setTimeout(() => { intro.classList.add('hidden'); app.classList.remove('hidden'); }, 600);
-            } catch (err) { alert("카메라 권한이 필요합니다."); }
-        });
+            return <CameraView />;
+        };
 
-        // 3초 카운트다운 및 촬영
-        captureBtn.addEventListener('click', () => {
-            let count = 3;
-            captureBtn.classList.add('hidden');
-            countdownEl.classList.remove('hidden');
-            countdownEl.innerText = count;
+        const CameraView = () => {
+            const videoRef = useRef(null);
+            const [isCounting, setIsCounting] = useState(false);
+            const [count, setCount] = useState(3);
 
-            const timer = setInterval(async () => {
-                count--;
-                if (count > 0) {
-                    countdownEl.innerText = count;
-                } else {
-                    clearInterval(timer);
-                    countdownEl.classList.add('hidden');
-                    // AI에게 현재 프레임 전송하여 누끼 따기
-                    await selfieSegmentation.send({image: video});
-                    video.classList.add('hidden');
-                    canvas.classList.remove('hidden');
-                    resultBtns.classList.remove('hidden');
-                }
-            }, 1000);
-        });
+            useEffect(() => {
+                const initCamera = async () => {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', aspectRatio: 1 } });
+                        if (videoRef.current) videoRef.current.srcObject = stream;
+                    } catch (err) {
+                        alert("카메라 권한을 허용해주세요.");
+                    }
+                };
+                initCamera();
+            }, []);
 
-        // 다시 찍기
-        document.getElementById('retake-btn').addEventListener('click', () => {
-            resultBtns.classList.add('hidden');
-            canvas.classList.add('hidden');
-            video.classList.remove('hidden');
-            captureBtn.classList.remove('hidden');
-        });
+            const startCountdown = () => {
+                setIsCounting(true);
+                let timer = 3;
+                const interval = setInterval(() => {
+                    timer -= 1;
+                    setCount(timer);
+                    if (timer === 0) {
+                        clearInterval(interval);
+                        // 여기서 실제 촬영 로직 실행
+                        alert("찰칵! 블랙 배경 스티커를 생성합니다.");
+                        setIsCounting(false);
+                        setCount(3);
+                    }
+                }, 1000);
+            };
 
-        // 다운로드
-        document.getElementById('download-btn').addEventListener('click', () => {
-            const link = document.createElement('a');
-            link.download = 'literal-sticker.png';
-            link.href = canvas.toDataURL();
-            link.click();
-        });
+            return (
+                <div className="h-screen flex flex-col items-center justify-center p-4">
+                    <div className="relative w-80 h-80 md:w-[450px] md:h-[450px] bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
+                        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror" />
+                        
+                        {isCounting && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                                <span className="text-9xl font-black text-white">{count}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {!isCounting && (
+                        <button onClick={startCountdown} className="mt-12 group relative flex items-center justify-center">
+                            <div className="w-20 h-20 rounded-full border-4 border-white transition-transform group-hover:scale-110" />
+                            <div className="absolute w-16 h-16 bg-white rounded-full transition-all group-active:scale-90" />
+                        </button>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
