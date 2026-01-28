@@ -3,38 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Literal Sticker (Black Ver.)</title>
+    <title>Literal Sticker</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
         body { background-color: #000000; color: white; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; }
-        .logo-text { font-size: clamp(3rem, 12vw, 10rem); font-weight: 900; letter-spacing: -0.05em; line-height: 0.8; text-align: center; cursor: pointer; transition: all 0.4s ease; }
-        .logo-text:hover { transform: scale(1.05); filter: drop-shadow(0 0 20px rgba(255,255,255,0.4)); }
-        .fade-out { opacity: 0; transition: all 0.6s ease; pointer-events: none; }
-        .hidden { display: none !important; }
-    </style>
+        .logo-text { font-size: clamp(3rem, 12vw, 10rem); font-weight: 900; letter-spacing: -0.05em; line-height: 0.8; cursor: pointer; transition: all 0.4s ease; text-align: center; }
+        .logo-text:hover { transform: scale(1.05); }
+        .fade-out { opacity: 0; transition: opacity 0.6s ease; pointer-events: none; }
+        .hidden { display: none; }
+        /* 카메라 프레임 스타일 */
+        .camera-container { position: relative; width: 320px; height: 320px; border-radius: 2rem; overflow: hidden; background: #111; border: 1px solid #222; }
+        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+    </script>
 </head>
 <body>
+
     <div id="intro" class="fixed inset-0 flex items-center justify-center bg-black z-50">
         <h1 id="start-btn" class="logo-text">LITERAL<br>STICKER</h1>
     </div>
 
-    <div id="app" class="hidden h-screen flex flex-col items-center justify-center p-4">
-        <div class="relative w-80 h-80 md:w-[450px] md:h-[450px] bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
-            <video id="input-video" class="hidden"></video>
-            <canvas id="output-canvas" class="w-full h-full object-cover"></canvas>
-            <div id="countdown" class="absolute inset-0 flex items-center justify-center text-9xl font-black text-white hidden"></div>
+    <div id="app" class="hidden h-screen flex flex-col items-center justify-center p-6">
+        <div class="camera-container shadow-2xl">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="output-canvas" class="hidden"></canvas>
+            <div id="countdown" class="absolute inset-0 flex items-center justify-center text-8xl font-black hidden z-10"></div>
         </div>
 
         <div class="mt-12 flex flex-col items-center gap-6">
-            <button id="capture-btn" class="px-12 py-4 bg-white text-black font-black rounded-full text-xl hover:bg-zinc-200 active:scale-95 transition-all shadow-xl">
+            <button id="capture-btn" class="px-12 py-4 bg-white text-black font-black rounded-full text-xl hover:bg-zinc-200 transition-all active:scale-95">
                 Capture
             </button>
             <div id="result-btns" class="hidden flex gap-4">
-                <a id="download-link" class="px-8 py-3 bg-zinc-100 text-black font-bold rounded-full hover:bg-white text-center">Download PNG</a>
-                <button id="retake-btn" class="px-8 py-3 bg-zinc-800 text-white font-bold rounded-full hover:bg-zinc-700">Retake</button>
+                <button id="download-btn" class="px-8 py-3 bg-zinc-100 text-black font-bold rounded-full hover:bg-white transition-all">Download PNG</button>
+                <button id="retake-btn" class="px-8 py-3 bg-zinc-800 text-white font-bold rounded-full hover:bg-zinc-700 transition-all">Retake</button>
             </div>
         </div>
     </div>
@@ -42,84 +45,86 @@
     <script>
         const intro = document.getElementById('intro');
         const app = document.getElementById('app');
-        const videoElement = document.getElementById('input-video');
-        const canvasElement = document.getElementById('output-canvas');
-        const canvasCtx = canvasElement.getContext('2d');
+        const startBtn = document.getElementById('start-btn');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('output-canvas');
+        const ctx = canvas.getContext('2d');
         const countdownEl = document.getElementById('countdown');
         const captureBtn = document.getElementById('capture-btn');
         const resultBtns = document.getElementById('result-btns');
-        const downloadLink = document.getElementById('download-link');
 
-        // 1. AI 누끼 처리 로직 (MediaPipe)
+        // AI 세그멘테이션 설정
         const selfieSegmentation = new SelfieSegmentation({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
         });
 
         selfieSegmentation.setOptions({ modelSelection: 1 });
         selfieSegmentation.onResults(onResults);
 
         function onResults(results) {
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            
-            // 마스크 영역 처리
-            canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height);
 
-            // 사람만 남기고 배경은 검은색(#000000)으로 채우기
-            canvasCtx.globalCompositeOperation = 'source-in';
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            // 마스크를 사용하여 배경을 검정색(#000000)으로 채우기
+            ctx.globalCompositeOperation = 'source-in';
+            ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
             
-            canvasCtx.globalCompositeOperation = 'destination-over';
-            canvasCtx.fillStyle = '#000000'; // 여울님이 원하신 완벽한 블랙
-            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-            
-            canvasCtx.restore();
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = '#000000'; // 여울 님이 요청하신 순수 블랙
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
         }
 
-        // 2. 인트로 전환 & 카메라 시작
-        document.getElementById('start-btn').addEventListener('click', () => {
-            intro.classList.add('fade-out');
-            setTimeout(() => {
-                intro.classList.add('hidden');
-                app.classList.remove('hidden');
-                
-                const camera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        await selfieSegmentation.send({image: videoElement});
-                    },
-                    width: 640,
-                    height: 640
-                });
-                camera.start();
-            }, 600);
+        // 인트로 시작
+        startBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                intro.classList.add('fade-out');
+                setTimeout(() => { intro.classList.add('hidden'); app.classList.remove('hidden'); }, 600);
+            } catch (err) { alert("카메라 권한이 필요합니다."); }
         });
 
-        // 3. 사진 촬영 (3초 타이머)
+        // 3초 카운트다운 및 촬영
         captureBtn.addEventListener('click', () => {
             let count = 3;
             captureBtn.classList.add('hidden');
             countdownEl.classList.remove('hidden');
-            
-            const timer = setInterval(() => {
-                countdownEl.innerText = count;
-                if (count === 0) {
+            countdownEl.innerText = count;
+
+            const timer = setInterval(async () => {
+                count--;
+                if (count > 0) {
+                    countdownEl.innerText = count;
+                } else {
                     clearInterval(timer);
                     countdownEl.classList.add('hidden');
-                    
-                    // 현재 캔버스를 이미지로 변환
-                    const dataURL = canvasElement.toDataURL("image/png");
-                    downloadLink.href = dataURL;
-                    downloadLink.download = "literal_sticker.png";
-                    
+                    // AI에게 현재 프레임 전송하여 누끼 따기
+                    await selfieSegmentation.send({image: video});
+                    video.classList.add('hidden');
+                    canvas.classList.remove('hidden');
                     resultBtns.classList.remove('hidden');
                 }
-                count--;
             }, 1000);
         });
 
+        // 다시 찍기
         document.getElementById('retake-btn').addEventListener('click', () => {
             resultBtns.classList.add('hidden');
+            canvas.classList.add('hidden');
+            video.classList.remove('hidden');
             captureBtn.classList.remove('hidden');
+        });
+
+        // 다운로드
+        document.getElementById('download-btn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'literal-sticker.png';
+            link.href = canvas.toDataURL();
+            link.click();
         });
     </script>
 </body>
