@@ -1,1 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Literal Sticker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
+        body { background-color: #000000; color: white; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; }
+        .logo-text { font-size: clamp(3rem, 12vw, 10rem); font-weight: 900; letter-spacing: -0.05em; line-height: 0.8; text-align: center; cursor: pointer; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .logo-text:hover { transform: scale(1.05); filter: drop-shadow(0 0 20px rgba(255,255,255,0.3)); }
+        .fade-out { opacity: 0; transform: scale(0.95); transition: all 0.6s ease; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="intro" class="fixed inset-0 flex items-center justify-center bg-black z-50">
+        <h1 id="start-btn" class="logo-text">LITERAL<br>STICKER</h1>
+    </div>
 
+    <div id="app" class="hidden h-screen flex flex-col items-center justify-center p-4">
+        <div class="relative w-80 h-80 md:w-[450px] md:h-[450px] bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,1)]">
+            <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
+            <div id="countdown" class="absolute inset-0 flex items-center justify-center text-9xl font-black hidden"></div>
+            <canvas id="output-canvas" class="absolute inset-0 w-full h-full hidden"></canvas>
+        </div>
+
+        <div class="mt-12 flex flex-col items-center gap-6">
+            <button id="capture-btn" class="px-12 py-4 bg-white text-black font-black rounded-full text-xl hover:bg-zinc-200 active:scale-95 transition-all">Capture</button>
+            <div id="result-btns" class="hidden flex gap-4">
+                <button id="download-btn" class="px-8 py-3 bg-zinc-100 text-black font-bold rounded-full hover:bg-white">Download PNG</button>
+                <button id="retake-btn" class="px-8 py-3 bg-zinc-800 text-white font-bold rounded-full hover:bg-zinc-700">Retake</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const intro = document.getElementById('intro');
+        const app = document.getElementById('app');
+        const startBtn = document.getElementById('start-btn');
+        const video = document.getElementById('video');
+        const countdownEl = document.getElementById('countdown');
+        const captureBtn = document.getElementById('capture-btn');
+        const resultBtns = document.getElementById('result-btns');
+
+        // [Logic 1] Start Application
+        startBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                intro.classList.add('fade-out');
+                setTimeout(() => {
+                    intro.style.display = 'none';
+                    app.classList.remove('hidden');
+                }, 600);
+            } catch (err) {
+                alert("카메라 권한이 필요합니다.");
+            }
+        });
+
+        // [Logic 2] Capture with 3s Timer
+        captureBtn.addEventListener('click', () => {
+            let count = 3;
+            captureBtn.style.display = 'none';
+            countdownEl.classList.remove('hidden');
+            countdownEl.innerText = count;
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.innerText = count;
+                } else {
+                    clearInterval(timer);
+                    countdownEl.classList.add('hidden');
+                    processSticker();
+                }
+            }, 1000);
+        });
+
+        function processSticker() {
+            // 배경 제거 로직이 들어갈 자리 (현재는 촬영 완료 표시)
+            alert("촬영 완료! 블랙 배경으로 누끼를 땁니다.");
+            resultBtns.classList.remove('hidden');
+        }
+
+        document.getElementById('retake-btn').addEventListener('click', () => {
+            resultBtns.classList.add('hidden');
+            captureBtn.style.display = 'block';
+        });
+    </script>
+</body>
+</html>
