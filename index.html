@@ -5,65 +5,105 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Literal Sticker</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.0"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         body { background-color: #000000; color: #ffffff; font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; }
         .mirror { transform: scaleX(-1); }
+        .btn-shadow { shadow-[0_0_20px_rgba(255,255,255,0.2)]; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef, useEffect, useCallback } = React;
+        const { useState, useRef, useEffect } = React;
 
         const App = () => {
-            const [view, setView] = useState('intro'); // 'intro' or 'camera'
-            
+            const [view, setView] = useState('intro');
+            const [model, setModel] = useState(null);
+
+            // AI 모델 미리 로드 (UX 리서치 기반 지연 방지)
+            useEffect(() => {
+                bodyPix.load().then(m => setModel(m));
+            }, []);
+
             if (view === 'intro') {
                 return (
                     <div className="h-screen flex items-center justify-center bg-black cursor-pointer" onClick={() => setView('camera')}>
-                        <h1 className="text-7xl font-black tracking-tighter hover:scale-105 transition-transform text-center">
+                        <h1 className="text-7xl font-black tracking-tighter hover:scale-105 transition-transform text-center select-none">
                             LITERAL<br/>STICKER
                         </h1>
                     </div>
                 );
             }
 
-            return <CameraView />;
+            return <CameraView model={model} />;
         };
 
-        const CameraView = () => {
+        const CameraView = ({ model }) => {
             const videoRef = useRef(null);
+            const canvasRef = useRef(null);
             const [isCounting, setIsCounting] = useState(false);
             const [count, setCount] = useState(3);
+            const [capturedImg, setCapturedImg] = useState(null);
 
             useEffect(() => {
                 const initCamera = async () => {
                     try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', aspectRatio: 1 } });
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 640 } });
                         if (videoRef.current) videoRef.current.srcObject = stream;
-                    } catch (err) {
-                        alert("카메라 권한을 허용해주세요.");
-                    }
+                    } catch (err) { alert("카메라 권한을 확인해주세요."); }
                 };
                 initCamera();
             }, []);
 
+            const takePhoto = async () => {
+                if (!model || !videoRef.current) return;
+                
+                const video = videoRef.current;
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+
+                // 1. 비디오 화면을 캔버스에 그리기
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+
+                // 2. AI로 배경 분리 (Segmentation)
+                const segmentation = await model.segmentPerson(canvas);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const pixels = imageData.data;
+
+                // 3. 배경을 #000000(블랙)으로 강제 변환
+                for (let i = 0; i < pixels.length; i += 4) {
+                    if (segmentation.data[i / 4] === 0) { // 배경인 경우
+                        pixels[i] = 0;     // R
+                        pixels[i + 1] = 0; // G
+                        pixels[i + 2] = 0; // B
+                    }
+                }
+                ctx.putImageData(imageData, 0, 0);
+                
+                // 4. 결과물 저장
+                setCapturedImg(canvas.toDataURL('image/png'));
+                setIsCounting(false);
+            };
+
             const startCountdown = () => {
+                if (isCounting) return;
                 setIsCounting(true);
                 let timer = 3;
+                setCount(timer);
                 const interval = setInterval(() => {
                     timer -= 1;
                     setCount(timer);
                     if (timer === 0) {
                         clearInterval(interval);
-                        // 여기서 실제 촬영 로직 실행
-                        alert("찰칵! 블랙 배경 스티커를 생성합니다.");
-                        setIsCounting(false);
-                        setCount(3);
+                        takePhoto();
                     }
                 }, 1000);
             };
@@ -71,21 +111,35 @@
             return (
                 <div className="h-screen flex flex-col items-center justify-center p-4">
                     <div className="relative w-80 h-80 md:w-[450px] md:h-[450px] bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
-                        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror" />
+                        {capturedImg ? (
+                            <img src={capturedImg} className="w-full h-full object-cover" />
+                        ) : (
+                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror" />
+                        )}
                         
-                        {isCounting && (
+                        {isCounting && count > 0 && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
                                 <span className="text-9xl font-black text-white">{count}</span>
                             </div>
                         )}
                     </div>
 
-                    {!isCounting && (
-                        <button onClick={startCountdown} className="mt-12 group relative flex items-center justify-center">
-                            <div className="w-20 h-20 rounded-full border-4 border-white transition-transform group-hover:scale-110" />
-                            <div className="absolute w-16 h-16 bg-white rounded-full transition-all group-active:scale-90" />
-                        </button>
-                    )}
+                    <canvas ref={canvasRef} className="hidden" />
+
+                    <div className="mt-12 flex gap-4">
+                        {!capturedImg ? (
+                            <button onClick={startCountdown} disabled={isCounting || !model} className={`group relative flex items-center justify-center ${!model && 'opacity-30'}`}>
+                                <div className="w-20 h-20 rounded-full border-4 border-white transition-transform group-hover:scale-110" />
+                                <div className="absolute w-16 h-16 bg-white rounded-full transition-all group-active:scale-90" />
+                                {!model && <span className="absolute -bottom-8 text-xs text-zinc-500 whitespace-nowrap">AI 로딩 중...</span>}
+                            </button>
+                        ) : (
+                            <>
+                                <button onClick={() => setCapturedImg(null)} className="px-8 py-3 bg-zinc-800 text-white font-bold rounded-full hover:bg-zinc-700 transition">다시 찍기</button>
+                                <a href={capturedImg} download="literal-sticker.png" className="px-8 py-3 bg-white text-black font-bold rounded-full hover:bg-zinc-200 transition">저장하기</a>
+                            </>
+                        )}
+                    </div>
                 </div>
             );
         };
