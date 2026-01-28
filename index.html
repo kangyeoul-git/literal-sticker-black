@@ -1,70 +1,105 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Literal Sticker (Black Ver.)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              pureBlack: '#000000',
-              offBlack: '#0a0a0a',
-              accent: '#ffffff',
-            },
-            fontFamily: {
-              sans: ['Inter', 'system-ui', 'sans-serif'],
-              mono: ['Fira Code', 'monospace'],
-            },
-            animation: {
-              'spin-slow': 'spin 3s linear infinite',
-              'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }
-          },
-        },
-      }
-    </script>
     <style>
-      body {
-        background-color: #000000;
-        color: #ffffff;
-        overscroll-behavior: none;
-      }
-      /* Custom scrollbar for webkit */
-      ::-webkit-scrollbar {
-        width: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #000000;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #333;
-        border-radius: 3px;
-      }
-      .perspective-container {
-        perspective: 1000px;
-      }
-      .card-3d {
-        transform-style: preserve-3d;
-        transition: transform 0.1s ease-out;
-      }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
+        body { background-color: #000000; color: #ffffff; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; }
+        .fade-out { opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+        .hidden { display: none; }
+        /* 로고 폰트 스타일 (이미지 느낌 재현) */
+        .logo-text { font-size: clamp(3rem, 10vw, 8rem); font-weight: 900; letter-spacing: -0.05em; line-height: 0.9; text-align: center; cursor: pointer; transition: transform 0.3s ease; }
+        .logo-text:hover { transform: scale(1.02); }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.4",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0"
-  }
-}
-</script>
 </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<body>
+
+    <div id="intro-layer" class="fixed inset-0 flex items-center justify-center bg-black z-50">
+        <h1 id="start-trigger" class="logo-text">
+            LITERAL<br>STICKER
+        </h1>
+    </div>
+
+    <div id="main-layer" class="hidden h-screen flex flex-col items-center justify-center p-6 bg-black">
+        <div class="relative w-72 h-72 md:w-96 md:h-96 bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl">
+            <video id="webcam" autoplay playsinline class="w-full h-full object-cover"></video>
+            <div id="countdown" class="absolute inset-0 flex items-center justify-center text-8xl font-black text-white hidden"></div>
+            <canvas id="capture-canvas" class="hidden"></canvas>
+        </div>
+
+        <div class="mt-10 flex flex-col items-center gap-4">
+            <button id="capture-btn" class="px-10 py-4 bg-white text-black font-extrabold rounded-full text-xl hover:bg-zinc-200 transition-all">
+                촬영 시작
+            </button>
+            <div id="action-btns" class="hidden flex gap-4">
+                <button id="download-btn" class="px-8 py-3 bg-zinc-100 text-black font-bold rounded-full hover:bg-white">이미지 저장</button>
+                <button id="retake-btn" class="px-8 py-3 bg-zinc-800 text-white font-bold rounded-full hover:bg-zinc-700">다시 찍기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const introLayer = document.getElementById('intro-layer');
+        const mainLayer = document.getElementById('main-layer');
+        const startTrigger = document.getElementById('start-trigger');
+        const video = document.getElementById('webcam');
+        const captureBtn = document.getElementById('capture-btn');
+        const actionBtns = document.getElementById('action-btns');
+        const countdownEl = document.getElementById('countdown');
+
+        // [전환] 로고 클릭 시 카메라 화면으로
+        startTrigger.addEventListener('click', () => {
+            introLayer.classList.add('fade-out');
+            setTimeout(() => {
+                introLayer.classList.add('hidden');
+                mainLayer.classList.remove('hidden');
+                initCamera();
+            }, 500);
+        });
+
+        // [카메라] 웹캠 시작
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                video.srcObject = stream;
+            } catch (err) {
+                alert("카메라를 실행할 수 없습니다. 권한을 허용해주세요.");
+            }
+        }
+
+        // [촬영] 3초 카운트다운 및 블랙 배경 처리
+        captureBtn.addEventListener('click', () => {
+            let count = 3;
+            captureBtn.classList.add('hidden');
+            countdownEl.classList.remove('hidden');
+            countdownEl.innerText = count;
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.innerText = count;
+                } else {
+                    clearInterval(timer);
+                    countdownEl.classList.add('hidden');
+                    performCapture();
+                }
+            }, 1000);
+        });
+
+        function performCapture() {
+            // 촬영 후 '이미지 저장/다시 찍기' 버튼 노출
+            actionBtns.classList.remove('hidden');
+            // 실제 구현 시 여기서 Segmentation 모델을 호출하여 배경을 #000000으로 채웁니다.
+            console.log("Black background sticker generated.");
+        }
+
+        document.getElementById('retake-btn').addEventListener('click', () => {
+            actionBtns.classList.add('hidden');
+            captureBtn.classList.remove('hidden');
+        });
+    </script>
+</body>
 </html>
