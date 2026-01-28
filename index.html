@@ -3,14 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Literal Sticker</title>
+    <title>Literal Sticker (Black Ver.)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
         body { background-color: #000000; color: white; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; }
-        .logo-text { font-size: clamp(3rem, 12vw, 10rem); font-weight: 900; letter-spacing: -0.05em; line-height: 0.8; text-align: center; cursor: pointer; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .logo-text:hover { transform: scale(1.05); filter: drop-shadow(0 0 20px rgba(255,255,255,0.3)); }
-        .fade-out { opacity: 0; transform: scale(0.95); transition: all 0.6s ease; pointer-events: none; }
+        .logo-text { font-size: clamp(3rem, 12vw, 10rem); font-weight: 900; letter-spacing: -0.05em; line-height: 0.8; text-align: center; cursor: pointer; transition: all 0.4s ease; }
+        .logo-text:hover { transform: scale(1.05); filter: drop-shadow(0 0 20px rgba(255,255,255,0.4)); }
+        .fade-out { opacity: 0; transition: all 0.6s ease; pointer-events: none; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -19,16 +22,18 @@
     </div>
 
     <div id="app" class="hidden h-screen flex flex-col items-center justify-center p-4">
-        <div class="relative w-80 h-80 md:w-[450px] md:h-[450px] bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,1)]">
-            <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
-            <div id="countdown" class="absolute inset-0 flex items-center justify-center text-9xl font-black hidden"></div>
-            <canvas id="output-canvas" class="absolute inset-0 w-full h-full hidden"></canvas>
+        <div class="relative w-80 h-80 md:w-[450px] md:h-[450px] bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
+            <video id="input-video" class="hidden"></video>
+            <canvas id="output-canvas" class="w-full h-full object-cover"></canvas>
+            <div id="countdown" class="absolute inset-0 flex items-center justify-center text-9xl font-black text-white hidden"></div>
         </div>
 
         <div class="mt-12 flex flex-col items-center gap-6">
-            <button id="capture-btn" class="px-12 py-4 bg-white text-black font-black rounded-full text-xl hover:bg-zinc-200 active:scale-95 transition-all">Capture</button>
+            <button id="capture-btn" class="px-12 py-4 bg-white text-black font-black rounded-full text-xl hover:bg-zinc-200 active:scale-95 transition-all shadow-xl">
+                Capture
+            </button>
             <div id="result-btns" class="hidden flex gap-4">
-                <button id="download-btn" class="px-8 py-3 bg-zinc-100 text-black font-bold rounded-full hover:bg-white">Download PNG</button>
+                <a id="download-link" class="px-8 py-3 bg-zinc-100 text-black font-bold rounded-full hover:bg-white text-center">Download PNG</a>
                 <button id="retake-btn" class="px-8 py-3 bg-zinc-800 text-white font-bold rounded-full hover:bg-zinc-700">Retake</button>
             </div>
         </div>
@@ -37,55 +42,84 @@
     <script>
         const intro = document.getElementById('intro');
         const app = document.getElementById('app');
-        const startBtn = document.getElementById('start-btn');
-        const video = document.getElementById('video');
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
         const countdownEl = document.getElementById('countdown');
         const captureBtn = document.getElementById('capture-btn');
         const resultBtns = document.getElementById('result-btns');
+        const downloadLink = document.getElementById('download-link');
 
-        // [Logic 1] Start Application
-        startBtn.addEventListener('click', async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                intro.classList.add('fade-out');
-                setTimeout(() => {
-                    intro.style.display = 'none';
-                    app.classList.remove('hidden');
-                }, 600);
-            } catch (err) {
-                alert("카메라 권한이 필요합니다.");
-            }
+        // 1. AI 누끼 처리 로직 (MediaPipe)
+        const selfieSegmentation = new SelfieSegmentation({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
         });
 
-        // [Logic 2] Capture with 3s Timer
+        selfieSegmentation.setOptions({ modelSelection: 1 });
+        selfieSegmentation.onResults(onResults);
+
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // 마스크 영역 처리
+            canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+
+            // 사람만 남기고 배경은 검은색(#000000)으로 채우기
+            canvasCtx.globalCompositeOperation = 'source-in';
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            canvasCtx.globalCompositeOperation = 'destination-over';
+            canvasCtx.fillStyle = '#000000'; // 여울님이 원하신 완벽한 블랙
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            canvasCtx.restore();
+        }
+
+        // 2. 인트로 전환 & 카메라 시작
+        document.getElementById('start-btn').addEventListener('click', () => {
+            intro.classList.add('fade-out');
+            setTimeout(() => {
+                intro.classList.add('hidden');
+                app.classList.remove('hidden');
+                
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await selfieSegmentation.send({image: videoElement});
+                    },
+                    width: 640,
+                    height: 640
+                });
+                camera.start();
+            }, 600);
+        });
+
+        // 3. 사진 촬영 (3초 타이머)
         captureBtn.addEventListener('click', () => {
             let count = 3;
-            captureBtn.style.display = 'none';
+            captureBtn.classList.add('hidden');
             countdownEl.classList.remove('hidden');
-            countdownEl.innerText = count;
-
+            
             const timer = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    countdownEl.innerText = count;
-                } else {
+                countdownEl.innerText = count;
+                if (count === 0) {
                     clearInterval(timer);
                     countdownEl.classList.add('hidden');
-                    processSticker();
+                    
+                    // 현재 캔버스를 이미지로 변환
+                    const dataURL = canvasElement.toDataURL("image/png");
+                    downloadLink.href = dataURL;
+                    downloadLink.download = "literal_sticker.png";
+                    
+                    resultBtns.classList.remove('hidden');
                 }
+                count--;
             }, 1000);
         });
 
-        function processSticker() {
-            // 배경 제거 로직이 들어갈 자리 (현재는 촬영 완료 표시)
-            alert("촬영 완료! 블랙 배경으로 누끼를 땁니다.");
-            resultBtns.classList.remove('hidden');
-        }
-
         document.getElementById('retake-btn').addEventListener('click', () => {
             resultBtns.classList.add('hidden');
-            captureBtn.style.display = 'block';
+            captureBtn.classList.remove('hidden');
         });
     </script>
 </body>
